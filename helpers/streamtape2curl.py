@@ -39,23 +39,17 @@ def get_curl_command(url: str) -> str:
     html = requests.get(url).content.decode()
 
     token = re.match(
-        NOROBOT_TOKEN_PATTERN,
-        html,
-        re.M|re.S
+        NOROBOT_TOKEN_PATTERN, html, re.M|re.S
     ).group(1)
 
     infix = re.match(
-        LINK_TOKEN_PATTERN,
-        html,
-        re.M|re.S
+        LINK_TOKEN_PATTERN, html, re.M|re.S
     ).group(1)
 
     final_url = f'{PREFIX}{infix}{token}'
 
     title = re.match(
-        TITLE_PATTERN,
-        html,
-        re.M|re.S
+        TITLE_PATTERN, html, re.M|re.S
     ).group(1)
 
     return title, final_url
