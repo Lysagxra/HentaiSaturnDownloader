@@ -242,7 +242,7 @@ def get_episode_file_name(episode_download_link):
         print(f"Error while extracting the file name: {indx_err}")
 
 def download_episode(
-    index, num_episodes, download_link, download_path, is_default_host=True
+        index, num_episodes, download_link, download_path, is_default_host=True
 ):
     """
     Downloads an episode from the specified link and provides progress updates.
