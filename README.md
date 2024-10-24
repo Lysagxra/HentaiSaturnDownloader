@@ -53,7 +53,7 @@ python3 hanime_downloader.py <hanime_page_url>
 Example
 
 ```
-https://www.hentaisaturn.tv/hentai/Bubble-de-House-de-XXX
+python3 hanime_downloader.py https://www.hentaisaturn.tv/hentai/Bubble-de-House-de-XXX
 ```
 
 ## Batch Download
