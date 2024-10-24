@@ -24,7 +24,7 @@ LINK_TOKEN_PATTERN = (
 )
 TITLE_PATTERN = r'.*<meta name="og:title" content="(.*?)">'
 
-def get_curl_command(url: str) -> str:
+def get_curl_command(url: str) -> tuple:
     """
     Extracts specific information from the HTML content of a given URL and
     constructs a final URL and the original title.
