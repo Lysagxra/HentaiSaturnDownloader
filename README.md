@@ -1,4 +1,4 @@
-# Simple HentaiSaturn Downloader
+# ![Logo](https://github.com/Lysagxra/SimpleHentaiSaturnDownloader/blob/80c86fcad2eb2afcda5c603a244d0a7475eb8dc3/misc/HSPlanet-logo.png) Simple HentaiSaturn Downloader
 
 A Python-based tool for downloading hanime from HentaiSaturn.
 
