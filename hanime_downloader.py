@@ -34,7 +34,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from helpers.streamtape2curl import get_curl_command
+from helpers.streamtape2curl import get_curl_command as get_alt_download_link
 
 SCRIPT_NAME = os.path.basename(__file__)
 DOWNLOAD_FOLDER = "Downloads"
@@ -313,16 +313,16 @@ def get_alt_video_url(url):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        anchor_tag = soup.find('a', {'href': True, 'target': "_blank"})
+        url_container = soup.find('a', {'href': True, 'target': "_blank"})
 
-        if not anchor_tag:
+        if not url_container:
             raise IndexError("No tags found with the target '_blank'.")
 
-        alt_video_url = anchor_tag['href']
-        return alt_video_url
+        return url_container['href']
 
     except requests.RequestException as req_err:
         print(f"Error processing video URL {url}: {req_err}")
+
     except IndexError as indx_err:
         print(f"Error finding alternative video URL: {indx_err}")
 
@@ -347,10 +347,11 @@ def download_from_alt_host(url, index, num_episodes, download_path):
     if not alt_video_url:
         raise ValueError(f"Failed to retrieve alternative video URL for {url}.")
 
-    (alt_filename, alt_download_link) = get_curl_command(alt_video_url)
+    (alt_filename, alt_download_link) = get_alt_download_link(alt_video_url)
     alt_download_path = os.path.join(download_path, alt_filename)
     download_episode(
-        index, num_episodes, alt_download_link, alt_download_path, False
+        index, num_episodes, alt_download_link, alt_download_path,
+        is_default_host=False
     )
 
 def extract_download_link(soup):
