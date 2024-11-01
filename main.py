@@ -56,7 +56,6 @@ def main():
     """
     urls = read_file(FILE)
     process_urls(urls)
-
     write_file(FILE)
 
 if __name__ == '__main__':
