@@ -4,15 +4,6 @@ This script downloads hanime episodes from a given HentaiSaturn URL.
 It extracts the hanime ID, formats the hanime name, retrieves episode IDs and
 URLs, and downloads each episode using the richwget tool.
 
-Dependencies:
-    - requests: For making HTTP requests.
-    - bs4 (BeautifulSoup): For parsing HTML content.
-
-Custom Modules:
-    - ProgressBar (richwget): For downloading with a progress bar.
-    - streamtape2curl (get_curl_command): For extract the download link from the
-                                          alternative host.
-
 Usage:
     - Run the script with the URL of the hanime page as a command-line argument.
     - It will create a directory structure in the 'Downloads' folder based on
@@ -22,39 +13,21 @@ Usage:
 import os
 import sys
 import re
+from concurrent.futures import ThreadPoolExecutor
 import requests
 from bs4 import BeautifulSoup
-from rich.progress import (
-    Progress,
-    SpinnerColumn,
-    BarColumn,
-    DownloadColumn,
-    TextColumn,
-    TransferSpeedColumn,
-    TimeRemainingColumn,
-)
+from rich.live import Live
 
 from helpers.streamtape2curl import get_curl_command as get_alt_download_link
+from helpers.progress_utils import create_progress_bar, create_progress_table
+from helpers.format_utils import extract_hanime_name, format_hanime_name
 
 SCRIPT_NAME = os.path.basename(__file__)
 DOWNLOAD_FOLDER = "Downloads"
+
+MAX_WORKERS = 3
+TIMEOUT = 10
 CHUNK_SIZE = 8192
-
-PATTERN = r"-a+$"
-ENDSTRINGS = ["Sub ITA", "ITA"]
-
-COLORS = {
-    'PURPLE': '\033[95m',
-    'CYAN': '\033[96m',
-    'DARKCYAN': '\033[36m',
-    'BLUE': '\033[94m',
-    'GREEN': '\033[92m',
-    'YELLOW': '\033[93m',
-    'RED': '\033[91m',
-    'BOLD': '\033[1m',
-    'UNDERLINE': '\033[4m',
-    'END': '\033[0m'
-}
 
 HEADERS = {
     "User-Agent": (
@@ -62,90 +35,6 @@ HEADERS = {
         "Gecko/20100101 Firefox/117.0"
     )
 }
-
-def ends_with_pattern(main_string):
-    """
-    Check if a string ends with the pattern "-a...a", where 'a...' means one or
-    more 'a' characters.
-
-    Args:
-        main_string (str): The string to check.
-
-    Returns:
-        bool: True if the string ends with the pattern, False otherwise.
-    """
-    match = re.search(PATTERN, main_string)
-    return match is not None
-
-def remove_pattern(main_string):
-    """
-    Remove the substring of the type "-a...a" from the end of a main string.
-
-    Args:
-        main_string (str): The string from which to remove the substring.
-
-    Returns:
-        str: The string with the specified substring removed from the end.
-    """
-    return re.sub(PATTERN, '', main_string)
-
-def extract_hanime_name(soup):
-    """
-    Extracts the hanime name from a BeautifulSoup object.
-
-    Args:
-        soup (BeautifulSoup): A BeautifulSoup object representing the parsed
-                              HTML content.
-
-    Returns:
-        str: The extracted hanime name if found.
-
-    Raises:
-        ValueError: If the container with the specified class is not found in
-                    the BeautifulSoup object.
-        AttributeError: If there is an error extracting the hanime name.
-    """
-    try:
-        title_container = soup.find(
-            'div', {'class': "container hentai-title-as mb-3 w-100"}
-        )
-
-        if title_container is None:
-            raise ValueError("Hanime title container not found.")
-
-        hanime_name = title_container.find('b').get_text()
-        return hanime_name
-
-    except AttributeError as attr_err:
-        return AttributeError(f"Error extracting hanime name: {attr_err}")
-
-def format_hanime_name(hanime_name):
-    """
-    Formats the hanime name by removing specific substrings at the end.
-
-    Args:
-        hanime_name (str): The hanime name extracted from the page.
-
-    Returns:
-        str: The formatted hanime name.
-
-    Raises:
-        ValueError: If the hanime name format is invalid.
-    """
-    def remove_substrings_at_end(string, substrings):
-        for substring in substrings:
-            if string.endswith(substring):
-                return string.replace(substring, '').strip()
-        return string
-
-    try:
-        formatted_hanime_name = remove_substrings_at_end(
-            hanime_name, ENDSTRINGS
-        )
-        return formatted_hanime_name
-
-    except IndexError:
-        raise ValueError("Invalid hanime name format.")
 
 def get_episode_urls(soup):
     """
@@ -183,7 +72,7 @@ def get_video_urls(episode_urls):
     """
     def extract_video_url(episode_url):
         try:
-            response = requests.get(episode_url)
+            response = requests.get(episode_url, timeout=TIMEOUT)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -205,25 +94,6 @@ def get_video_urls(episode_urls):
         if url is not None
     ]
 
-def progress_bar():
-    """
-    Creates and returns a progress bar for tracking download progress.
-
-    Returns:
-        Progress: A Progress object configured with relevant columns.
-    """
-    return Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        DownloadColumn(),
-        "-",
-        TransferSpeedColumn(),
-        "-",
-        TimeRemainingColumn(),
-        transient=True
-    )
-
 def get_episode_file_name(episode_download_link):
     """
     Extract the file name from the provided episode download link.
@@ -241,55 +111,68 @@ def get_episode_file_name(episode_download_link):
     except IndexError as indx_err:
         print(f"Error while extracting the file name: {indx_err}")
 
+    return None
+
 def download_episode(
-        index, num_episodes, download_link, download_path, is_default_host=True
+        download_link, download_path, task_info, is_default_host=True
 ):
     """
-    Downloads an episode from the specified link and provides progress updates.
+    Downloads an episode from the specified link and provides real-time
+    progress updates.
 
     Args:
-        index (int): The index of the episode (0-based).
-        num_episodes (int): The total number of episodes available.
         download_link (str): The URL from which to download the episode.
-        download_path (str): The directory path where the episode file will be
-                             saved.
-        is_default_host (bool): Indicates whether the default host is being
-                                used. Defaults to True.
+        download_path (str): The directory path where the episode file will
+                             be saved.
+        task_info (tuple): A tuple containing progress tracking information:
+            - job_progress: The progress bar object.
+            - task: The specific task being tracked.
+            - overall_task: The overall progress task being updated.
+        is_default_host (bool): Indicates whether the default host is being used.
+                                Defaults to True. Affects the file-saving path.
 
     Prints:
-        Progress messages during the download process.
+        Progress messages during the download process, updating the user on the
+        completion percentage of the episode download.
 
     Raises:
-        requests.RequestException: If there is an error with the HTTP request.
+        requests.RequestException: If there is an error with the HTTP request,
+                                   such as connectivity issues or invalid URLs.
         OSError: If there is an error with file operations, such as writing to
-                 disk.
-        ValueError: If the content-length is invalid or not provided in the
-                    response headers.
+                 disk or permission issues.
     """
-    print(f"\t[+] Downloading Episode {index + 1}/{num_episodes}...")
+    def save_file_with_progress(response, final_path, file_size, task_info):
+        (job_progress, task, overall_task) = task_info
+        total_downloaded = 0
+
+        with open(final_path, 'wb') as file:
+            for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                if chunk:
+                    file.write(chunk)
+                    total_downloaded += len(chunk)
+                    progress_percentage = (total_downloaded / file_size) * 100
+                    job_progress.update(task, completed=progress_percentage)
+
+        job_progress.update(task, completed=100, visible=False)
+        job_progress.advance(overall_task)
 
     try:
-        response = requests.get(download_link, stream=True, headers=HEADERS)
+        response = requests.get(
+            download_link, stream=True, headers=HEADERS, timeout=TIMEOUT
+        )
         response.raise_for_status()
 
         file_name = get_episode_file_name(download_link)
         final_path = os.path.join(download_path, file_name) \
             if is_default_host else download_path
         file_size = int(response.headers.get('content-length', -1))
-
-        with open(final_path, 'wb') as file:
-            with progress_bar() as pbar:
-                task = pbar.add_task("[cyan]Progress", total=file_size)
-
-                for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                    if chunk:
-                        file.write(chunk)
-                        pbar.update(task, advance=len(chunk))
+        save_file_with_progress(response, final_path, file_size, task_info)
 
     except requests.RequestException as req_error:
-        print(f"HTTP request failed for episode {index + 1}: {req_error}")
+        print(f"HTTP request failed: {req_error}")
+
     except OSError as os_error:
-        print(f"File operation failed for episode {index + 1}: {os_error}")
+        print(f"File operation failed: {os_error}")
 
 def get_alt_video_url(url):
     """
@@ -309,7 +192,7 @@ def get_alt_video_url(url):
     alt_url = url + "&server=1"
 
     try:
-        response = requests.get(alt_url)
+        response = requests.get(alt_url, timeout=TIMEOUT)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -326,7 +209,9 @@ def get_alt_video_url(url):
     except IndexError as indx_err:
         print(f"Error finding alternative video URL: {indx_err}")
 
-def download_from_alt_host(url, index, num_episodes, download_path):
+    return None
+
+def download_from_alt_host(url, download_path, task_info):
     """
     Downloads a video from an alternative host by retrieving the alternative
     video URL, generating a cURL command, and downloading the episode to the
@@ -334,10 +219,9 @@ def download_from_alt_host(url, index, num_episodes, download_path):
 
     Args:
         url (str): The original video URL to be processed.
-        index (int): The index of the episode to be downloaded.
-        num_episodes (int): The total number of episodes to be downloaded.
         download_path (str): The directory path where the episode should be
                              downloaded.
+        task_info (tuple): A tuple containing progress tracking information.
 
     Raises:
         ValueError: If the alternative video URL cannot be retrieved.
@@ -350,8 +234,7 @@ def download_from_alt_host(url, index, num_episodes, download_path):
     (alt_filename, alt_download_link) = get_alt_download_link(alt_video_url)
     alt_download_path = os.path.join(download_path, alt_filename)
     download_episode(
-        index, num_episodes, alt_download_link, alt_download_path,
-        is_default_host=False
+        alt_download_link, alt_download_path, task_info, is_default_host=False
     )
 
 def extract_download_link(soup):
@@ -379,7 +262,7 @@ def extract_download_link(soup):
     print("\t[-] No download link found.")
     return None
 
-def process_video_url(url, index, num_episodes, download_path):
+def process_video_url(url, download_path, task_info):
     """
     Processes a video URL to extract and download its associated files.
     If no source links are found, it attempts to download from an alternative
@@ -387,50 +270,75 @@ def process_video_url(url, index, num_episodes, download_path):
 
     Args:
         url (str): The video URL.
-        index (int): The index of the episode.
-        num_episodes (int): The total number of episodes.
         download_path (str): The path to save the downloaded episode.
+        task_info (tuple): A tuple containing progress tracking information.
 
     Raises:
         requests.RequestException: If there is an error with the HTTP request
                                    while processing the video URL.
     """
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=TIMEOUT)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
 
         download_link = extract_download_link(soup)
 
         if download_link:
-            download_episode(index, num_episodes, download_link, download_path)
+            download_episode(download_link, download_path, task_info)
         else:
-            download_from_alt_host(url, index, num_episodes, download_path)
+            download_from_alt_host(url, download_path, task_info)
 
     except requests.RequestException as req_err:
         print(f"Error processing video URL {url}: {req_err}")
 
-def download_hanime(hanime_name, video_urls, num_episodes, download_path):
+def download_hanime(hanime_name, video_urls, download_path):
     """
-    Downloads hanime episodes from provided video URLs and saves them to
-    the specified path.
+    Concurrently downloads episodes of a specified anime from provided video
+    URLs and tracks the download progress in real-time.
 
-    Args:
-        hanime_name (str): The name of the hanime.
-        video_urls (list): A list of video URLs.
-        num_episodes (int): The total number of episodes.
-        download_path (str): The path to save the downloaded episodes.
+    Parameters:
+        hanime_name (str): The name of the hanime being downloaded.
+        video_urls (list): A list of URLs corresponding to each episode to be
+                           downloaded.
+        download_path (str): The local directory path where the downloaded
+                             episodes will be saved.
 
-    Prints:
-        Progress messages for downloading each episode and completion message
-        when all episodes are downloaded.
+    Usage:
+        This function initializes a progress bar to display the download
+        status of each episode and updates the overall progress as episodes
+        are downloaded.
     """
-    print(f"\nDownloading Hanime: {COLORS['BOLD']}{hanime_name}{COLORS['END']}")
+    def manage_running_tasks(futures):
+        while futures:
+            for future in list(futures.keys()):
+                if future.running():
+                    task = futures.pop(future)
+                    job_progress.update(task, visible=True)
 
-    for (index, video_url) in enumerate(video_urls):
-        process_video_url(video_url, index, num_episodes, download_path)
+    job_progress = create_progress_bar()
+    progress_table = create_progress_table(hanime_name, job_progress)
+    num_episodes = len(video_urls)
 
-    print("\t[\u2713] Download complete.")
+    with Live(progress_table, refresh_per_second=10):
+        futures = {}
+
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            overall_task = job_progress.add_task(
+                "[cyan]Progress", total=num_episodes, visible=True
+            )
+
+            for indx, video_url in enumerate(video_urls):
+                task = job_progress.add_task(
+                    f"[cyan]Episode {indx + 1}/{num_episodes}",
+                    total=100, visible=False
+                )
+                future = executor.submit(
+                    process_video_url, video_url, download_path,
+                    (job_progress, task, overall_task)
+                )
+                futures[future] = task
+                manage_running_tasks(futures)
 
 def create_download_directory(download_path):
     """
@@ -462,7 +370,7 @@ def fetch_hanime_page(url):
         requests.RequestException: If there is an error with the HTTP request.
     """
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=TIMEOUT)
         response.raise_for_status()
         return BeautifulSoup(response.text, 'html.parser')
 
@@ -490,15 +398,13 @@ def process_hanime_download(url):
     try:
         hanime_name = format_hanime_name(extract_hanime_name(soup))
 
-        download_path = os.path.join(os.getcwd(), DOWNLOAD_FOLDER, hanime_name)
+        download_path = os.path.join(DOWNLOAD_FOLDER, hanime_name)
         create_download_directory(download_path)
 
         episode_urls = get_episode_urls(soup)
 
         video_urls = get_video_urls(episode_urls)
-        num_episodes = len(video_urls)
-
-        download_hanime(hanime_name, video_urls, num_episodes, download_path)
+        download_hanime(hanime_name, video_urls, download_path)
 
     except ValueError as val_err:
         print(f"Value error: {val_err}")
