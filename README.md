@@ -1,4 +1,4 @@
-# Simple HentaiSaturn Downloader
+# HentaiSaturn Downloader
 
 > A Python-based tool to download anime series from HentaiSaturn, tracking progress for each episode. It extracts video URLs and handles downloads efficiently.
 
