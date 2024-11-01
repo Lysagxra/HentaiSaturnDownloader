@@ -2,18 +2,23 @@
 
 > A Python-based tool for downloading hanime from HentaiSaturn.
 
-![Screenshot](https://raw.githubusercontent.com/Lysagxra/SimpleHentaiSaturnDownloader/refs/heads/main/misc/ScreenshotHSD.png)
+![Screenshot](https://github.com/Lysagxra/HentaiSaturnDownloader/blob/68d64c2b3b2bf2328f1e8ce1bb7a297f87c20692/misc/Screenshot.png)
 
 ## Features
 
-- Downloads hanime episodes from an HentaiSaturn URL.
+- Downloads multiple episodes concurrently.
 - Supports batch downloading via a list of URLs.
+- Tracks download progress with a progress bar.
+- Supports downloading from alternative hosts if necessary.
+- Automatically creates a directory structure for organized storage.
 
 ## Directory Structure
 ```
 project-root/
 ├── helpers/
-│ └── streamtape2curl.py  # Python script to extract the download link from the alternative host
+│ ├── format_utils.py     # Python script containing formatting utility for anime name
+│ ├── progress_utils.py   # Python script containing progress utility
+│ └── streamtape2curl.py  # Module to extract the download link from the alternative host
 ├── hanime_downloader.py  # Python script to download the hanime episodes
 ├── main.py               # Main Python script to run the downloader
 └── URLs.txt              # Text file containing album URLs
@@ -30,11 +35,11 @@ project-root/
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/Lysagxra/SimpleHentaiSaturnDownloader.git
+   git clone https://github.com/Lysagxra/HentaiSaturnDownloader.git
 
 2. Navigate to the project directory:
    ```bash
-   cd SimpleHentaiSaturnDownloader
+   cd HentaiSaturnDownloader
 
 3. Install the required dependencies:
    ```bash
