@@ -52,7 +52,7 @@ To download a single hanime, you can use the `hanime_downloader.py` script.
 
 ### Usage
 
-Run the script followed by the hanime URL you want download:
+Run the script followed by the hanime URL you want to download:
 
 ```bash
 python3 hanime_downloader.py <hanime_url>
