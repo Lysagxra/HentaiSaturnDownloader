@@ -1,6 +1,6 @@
 # HentaiSaturn Downloader
 
-> A Python-based tool to download anime series from HentaiSaturn, tracking progress for each episode. It extracts video URLs and handles downloads efficiently.
+> A Python-based tool for downloading hanime series from HentaiSaturn, featuring progress tracking for each episode. It efficiently extracts video URLs and manages downloads.
 
 ![Screenshot](https://github.com/Lysagxra/HentaiSaturnDownloader/blob/68d64c2b3b2bf2328f1e8ce1bb7a297f87c20692/misc/Screenshot.png)
 
@@ -16,12 +16,13 @@
 ```
 project-root/
 ├── helpers/
-│ ├── format_utils.py     # Python script containing formatting utility for anime name
-│ ├── progress_utils.py   # Python script containing progress utility
-│ └── streamtape2curl.py  # Module to extract the download link from the alternative host
-├── hanime_downloader.py  # Python script to download the hanime episodes
-├── main.py               # Main Python script to run the downloader
-└── URLs.txt              # Text file containing album URLs
+│ ├── download_utils.py   # Script containing utilities for managing the download process
+│ ├── format_utils.py     # Script containing formatting utilities
+│ ├── progress_utils.py   # Script containing utilities for tracking download progress
+│ └── streamtape2curl.py  # Module for extracting download links from alternative hosts
+├── hanime_downloader.py  # Module for downloading hanime episodes
+├── main.py               # Main script to run the downloader
+└── URLs.txt              # Text file containing anime URLs
 ```
 
 ## Dependencies
@@ -54,13 +55,13 @@ To download a single hanime, you can use the `hanime_downloader.py` script.
 Run the script followed by the hanime URL you want download:
 
 ```bash
-python3 hanime_downloader.py <hanime_page_url>
+python3 hanime_downloader.py <hanime_url>
 ```
 
 Example
 
 ```
-python3 hanime_downloader.py https://www.hentaisaturn.tv/hentai/Bubble-de-House-de-XXX
+python3 hanime_downloader.py https://www.hentaisaturn.tv/hentai/Boku-ni-Harem-Sefure-ga-Dekita-Riyuu
 ```
 
 ## Batch Download
