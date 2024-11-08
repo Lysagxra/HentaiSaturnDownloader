@@ -11,23 +11,22 @@ Usage:
 """
 
 import os
-import sys
 import re
-from concurrent.futures import ThreadPoolExecutor
+import sys
+from urllib.parse import urlparse
+
 import requests
 from bs4 import BeautifulSoup
 from rich.live import Live
 
+from helpers.download_utils import save_file_with_progress, run_in_parallel
 from helpers.streamtape2curl import get_curl_command as get_alt_download_link
 from helpers.progress_utils import create_progress_bar, create_progress_table
 from helpers.format_utils import extract_hanime_name, format_hanime_name
 
 SCRIPT_NAME = os.path.basename(__file__)
 DOWNLOAD_FOLDER = "Downloads"
-
-MAX_WORKERS = 3
 TIMEOUT = 10
-CHUNK_SIZE = 8192
 
 HEADERS = {
     "User-Agent": (
@@ -94,22 +93,32 @@ def get_video_urls(episode_urls):
         if url is not None
     ]
 
-def get_episode_file_name(episode_download_link):
+def get_episode_filename(download_link):
     """
     Extract the file name from the provided episode download link.
 
     Args:
-        episode_download_link (str): The download link for the episode.
+        download_link (str): The download link for the episode. This should be
+                             a valid URL pointing to the file location.
 
     Returns:
-        str: The extracted file name, or None if the link is None or empty.
-    """
-    try:
-        return episode_download_link.split('/')[-1] \
-            if episode_download_link else None
+        str: The extracted file name from the URL. Returns `None` if the link is 
+             `None` or an empty string.
 
-    except IndexError as indx_err:
-        print(f"Error while extracting the file name: {indx_err}")
+    Raises:
+        IndexError: If the link is improperly formatted and does not contain a 
+                    file name in the expected position (e.g., the URL is empty
+                    or malformed).
+    """
+    if download_link:
+        parsed_url = urlparse(download_link)
+        return os.path.basename(parsed_url.path)
+
+#        try:
+#            return download_link.split('/')[-1]
+
+#        except IndexError as indx_err:
+#            print(f"Error while extracting the file name: {indx_err}")
 
     return None
 
@@ -128,51 +137,26 @@ def download_episode(
             - job_progress: The progress bar object.
             - task: The specific task being tracked.
             - overall_task: The overall progress task being updated.
-        is_default_host (bool): Indicates whether the default host is being used.
-                                Defaults to True. Affects the file-saving path.
-
-    Prints:
-        Progress messages during the download process, updating the user on the
-        completion percentage of the episode download.
+        is_default_host (bool): Indicates whether the default host is being
+                                used. Defaults to True.
 
     Raises:
         requests.RequestException: If there is an error with the HTTP request,
                                    such as connectivity issues or invalid URLs.
-        OSError: If there is an error with file operations, such as writing to
-                 disk or permission issues.
     """
-    def save_file_with_progress(response, final_path, file_size, task_info):
-        (job_progress, task, overall_task) = task_info
-        total_downloaded = 0
-
-        with open(final_path, 'wb') as file:
-            for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                if chunk:
-                    file.write(chunk)
-                    total_downloaded += len(chunk)
-                    progress_percentage = (total_downloaded / file_size) * 100
-                    job_progress.update(task, completed=progress_percentage)
-
-        job_progress.update(task, completed=100, visible=False)
-        job_progress.advance(overall_task)
-
     try:
         response = requests.get(
             download_link, stream=True, headers=HEADERS, timeout=TIMEOUT
         )
         response.raise_for_status()
 
-        file_name = get_episode_file_name(download_link)
+        file_name = get_episode_filename(download_link)
         final_path = os.path.join(download_path, file_name) \
             if is_default_host else download_path
-        file_size = int(response.headers.get('content-length', -1))
-        save_file_with_progress(response, final_path, file_size, task_info)
+        save_file_with_progress(response, final_path, task_info)
 
     except requests.RequestException as req_error:
         print(f"HTTP request failed: {req_error}")
-
-    except OSError as os_error:
-        print(f"File operation failed: {os_error}")
 
 def get_alt_video_url(url):
     """
@@ -259,7 +243,7 @@ def extract_download_link(soup):
             if match:
                 return match.group(1)
 
-    print("\t[-] No download link found.")
+    print("No download link found.")
     return None
 
 def process_video_url(url, download_path, task_info):
@@ -303,55 +287,35 @@ def download_hanime(hanime_name, video_urls, download_path):
                            downloaded.
         download_path (str): The local directory path where the downloaded
                              episodes will be saved.
-
-    Usage:
-        This function initializes a progress bar to display the download
-        status of each episode and updates the overall progress as episodes
-        are downloaded.
     """
-    def manage_running_tasks(futures):
-        while futures:
-            for future in list(futures.keys()):
-                if future.running():
-                    task = futures.pop(future)
-                    job_progress.update(task, visible=True)
-
     job_progress = create_progress_bar()
     progress_table = create_progress_table(hanime_name, job_progress)
-    num_episodes = len(video_urls)
 
     with Live(progress_table, refresh_per_second=10):
-        futures = {}
+        run_in_parallel(
+            process_video_url, video_urls, job_progress, download_path
+        )
 
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            overall_task = job_progress.add_task(
-                "[cyan]Progress", total=num_episodes, visible=True
-            )
-
-            for indx, video_url in enumerate(video_urls):
-                task = job_progress.add_task(
-                    f"[cyan]Episode {indx + 1}/{num_episodes}",
-                    total=100, visible=False
-                )
-                future = executor.submit(
-                    process_video_url, video_url, download_path,
-                    (job_progress, task, overall_task)
-                )
-                futures[future] = task
-                manage_running_tasks(futures)
-
-def create_download_directory(download_path):
+def create_download_directory(hanime_name):
     """
     Creates a directory for downloads if it doesn't exist.
 
     Args:
-        download_path (str): The path to create the download directory.
+        hanime_name (str): The name of the hanime used to create the download 
+                          directory.
+
+    Returns:
+        str: The path to the created download directory.
 
     Raises:
         OSError: If there is an error creating the directory.
     """
+    download_path = os.path.join(DOWNLOAD_FOLDER, hanime_name)
+
     try:
         os.makedirs(download_path, exist_ok=True)
+        return download_path
+
     except OSError as os_err:
         print(f"Error creating directory: {os_err}")
         sys.exit(1)
@@ -388,26 +352,32 @@ def process_hanime_download(url):
     Raises:
         ValueError: If there is an issue extracting the Hanime ID or name
                     from the URL or the page content.
-
-    Creates:
-        A directory for the Hanime series in the current working directory,
-        where all episodes will be downloaded.
     """
     soup = fetch_hanime_page(url)
 
     try:
         hanime_name = format_hanime_name(extract_hanime_name(soup))
-
-        download_path = os.path.join(DOWNLOAD_FOLDER, hanime_name)
-        create_download_directory(download_path)
+        download_path = create_download_directory(hanime_name)
 
         episode_urls = get_episode_urls(soup)
-
         video_urls = get_video_urls(episode_urls)
         download_hanime(hanime_name, video_urls, download_path)
 
     except ValueError as val_err:
         print(f"Value error: {val_err}")
+
+def clear_terminal():
+    """
+    Clears the terminal screen based on the operating system.
+    """
+    commands = {
+        'nt': 'cls',      # Windows
+        'posix': 'clear'  # macOS and Linux
+    }
+
+    command = commands.get(os.name)
+    if command:
+        os.system(command)
 
 def main():
     """
@@ -421,6 +391,7 @@ def main():
         print(f"Usage: python3 {SCRIPT_NAME} <hanime_url>")
         sys.exit(1)
 
+    clear_terminal()
     url = sys.argv[1]
     process_hanime_download(url)
 
