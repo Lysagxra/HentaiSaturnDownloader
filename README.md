@@ -58,7 +58,7 @@ Run the script followed by the hanime URL you want to download:
 python3 hanime_downloader.py <hanime_url>
 ```
 
-Example
+### Example
 
 ```
 python3 hanime_downloader.py https://www.hentaisaturn.tv/hentai/Boku-ni-Harem-Sefure-ga-Dekita-Riyuu
