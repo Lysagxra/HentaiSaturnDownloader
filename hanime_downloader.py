@@ -14,25 +14,29 @@ import os
 import re
 import sys
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
-from bs4 import BeautifulSoup
 from rich.live import Live
 
+from helpers.streamtape_utils import get_curl_command as get_alt_download_link
 from helpers.download_utils import save_file_with_progress, run_in_parallel
-from helpers.streamtape2curl import get_curl_command as get_alt_download_link
 from helpers.progress_utils import create_progress_bar, create_progress_table
 from helpers.format_utils import extract_hanime_name, format_hanime_name
+from helpers.general_utils import (
+    fetch_page, create_download_directory, clear_terminal
+)
 
 SCRIPT_NAME = os.path.basename(__file__)
 DOWNLOAD_FOLDER = "Downloads"
-TIMEOUT = 10
 
+TIMEOUT = 10
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) "
         "Gecko/20100101 Firefox/117.0"
-    )
+    ),
+    "Connection": "keep-alive"
 }
 
 def get_episode_urls(soup):
@@ -71,10 +75,7 @@ def get_video_urls(episode_urls):
     """
     def extract_video_url(episode_url):
         try:
-            response = requests.get(episode_url, timeout=TIMEOUT)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-
+            soup = fetch_page(episode_url)
             video_url_container = soup.find(
                 'a',
                 {
@@ -88,10 +89,20 @@ def get_video_urls(episode_urls):
             print(f"Error fetching episode URL {episode_url}: {req_err}")
             return None
 
-    return [
-        url for url in map(extract_video_url, episode_urls)
-        if url is not None
-    ]
+    video_urls = []
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(extract_video_url, episode_url): episode_url
+            for episode_url in episode_urls
+        }
+
+        for future in as_completed(futures):
+            video_url = future.result()
+            if video_url:
+                video_urls.append(video_url)
+
+    return video_urls
 
 def get_episode_filename(download_link):
     """
@@ -102,8 +113,8 @@ def get_episode_filename(download_link):
                              a valid URL pointing to the file location.
 
     Returns:
-        str: The extracted file name from the URL. Returns `None` if the link is 
-             `None` or an empty string.
+        str: The extracted file name from the URL. Returns `None` if the link
+             is `None` or an empty string.
 
     Raises:
         IndexError: If the link is improperly formatted and does not contain a 
@@ -113,12 +124,6 @@ def get_episode_filename(download_link):
     if download_link:
         parsed_url = urlparse(download_link)
         return os.path.basename(parsed_url.path)
-
-#        try:
-#            return download_link.split('/')[-1]
-
-#        except IndexError as indx_err:
-#            print(f"Error while extracting the file name: {indx_err}")
 
     return None
 
@@ -151,8 +156,10 @@ def download_episode(
         response.raise_for_status()
 
         file_name = get_episode_filename(download_link)
-        final_path = os.path.join(download_path, file_name) \
-            if is_default_host else download_path
+        final_path = (
+            os.path.join(download_path, file_name) if is_default_host
+            else download_path
+        )
         save_file_with_progress(response, final_path, task_info)
 
     except requests.RequestException as req_error:
@@ -176,12 +183,9 @@ def get_alt_video_url(url):
     alt_url = url + "&server=1"
 
     try:
-        response = requests.get(alt_url, timeout=TIMEOUT)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = fetch_page(alt_url)
 
         url_container = soup.find('a', {'href': True, 'target': "_blank"})
-
         if not url_container:
             raise IndexError("No tags found with the target '_blank'.")
 
@@ -211,9 +215,10 @@ def download_from_alt_host(url, download_path, task_info):
         ValueError: If the alternative video URL cannot be retrieved.
     """
     alt_video_url = get_alt_video_url(url)
-
     if not alt_video_url:
-        raise ValueError(f"Failed to retrieve alternative video URL for {url}.")
+        raise ValueError(
+            f"Failed to retrieve alternative video URL for {url}."
+        )
 
     (alt_filename, alt_download_link) = get_alt_download_link(alt_video_url)
     alt_download_path = os.path.join(download_path, alt_filename)
@@ -234,12 +239,12 @@ def extract_download_link(soup):
         str: The extracted download link for the video, or None if no link is
              found.
     """
+    pattern = r'file:\s*"([^"]+)"'
     script_tags = soup.find_all('script')
 
     for script_tag in script_tags:
         if script_tag.string:
-            match = re.search(r'file:\s*"([^"]+)"', script_tag.string)
-
+            match = re.search(pattern, script_tag.string)
             if match:
                 return match.group(1)
 
@@ -262,12 +267,9 @@ def process_video_url(url, download_path, task_info):
                                    while processing the video URL.
     """
     try:
-        response = requests.get(url, timeout=TIMEOUT)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = fetch_page(url)
 
         download_link = extract_download_link(soup)
-
         if download_link:
             download_episode(download_link, download_path, task_info)
         else:
@@ -296,52 +298,6 @@ def download_hanime(hanime_name, video_urls, download_path):
             process_video_url, video_urls, job_progress, download_path
         )
 
-def create_download_directory(hanime_name):
-    """
-    Creates a directory for downloads if it doesn't exist.
-
-    Args:
-        hanime_name (str): The name of the hanime used to create the download 
-                          directory.
-
-    Returns:
-        str: The path to the created download directory.
-
-    Raises:
-        OSError: If there is an error creating the directory.
-    """
-    download_path = os.path.join(DOWNLOAD_FOLDER, hanime_name)
-
-    try:
-        os.makedirs(download_path, exist_ok=True)
-        return download_path
-
-    except OSError as os_err:
-        print(f"Error creating directory: {os_err}")
-        sys.exit(1)
-
-def fetch_hanime_page(url):
-    """
-    Fetches the hanime page and returns its BeautifulSoup object.
-
-    Args:
-        url (str): The URL of the hanime page.
-
-    Returns:
-        BeautifulSoup: The BeautifulSoup object containing the HTML.
-
-    Raises:
-        requests.RequestException: If there is an error with the HTTP request.
-    """
-    try:
-        response = requests.get(url, timeout=TIMEOUT)
-        response.raise_for_status()
-        return BeautifulSoup(response.text, 'html.parser')
-
-    except requests.RequestException as req_err:
-        print(f"Error fetching the hanime page: {req_err}")
-        sys.exit(1)
-
 def process_hanime_download(url):
     """
     Download a series of Hanime episodes from the specified URL.
@@ -353,7 +309,7 @@ def process_hanime_download(url):
         ValueError: If there is an issue extracting the Hanime ID or name
                     from the URL or the page content.
     """
-    soup = fetch_hanime_page(url)
+    soup = fetch_page(url)
 
     try:
         hanime_name = format_hanime_name(extract_hanime_name(soup))
@@ -365,19 +321,6 @@ def process_hanime_download(url):
 
     except ValueError as val_err:
         print(f"Value error: {val_err}")
-
-def clear_terminal():
-    """
-    Clears the terminal screen based on the operating system.
-    """
-    commands = {
-        'nt': 'cls',      # Windows
-        'posix': 'clear'  # macOS and Linux
-    }
-
-    command = commands.get(os.name)
-    if command:
-        os.system(command)
 
 def main():
     """
