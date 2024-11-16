@@ -16,13 +16,15 @@
 ```
 project-root/
 ├── helpers/
-│ ├── download_utils.py   # Script containing utilities for managing the download process
-│ ├── format_utils.py     # Script containing formatting utilities
-│ ├── progress_utils.py   # Script containing utilities for tracking download progress
-│ └── streamtape2curl.py  # Module for extracting download links from alternative hosts
-├── hanime_downloader.py  # Module for downloading hanime episodes
-├── main.py               # Main script to run the downloader
-└── URLs.txt              # Text file containing anime URLs
+│ ├── download_utils.py    # Utilities for managing the download process
+│ ├── file_utils.py        # Utilities for managing file operations
+│ ├── format_utils.py      # Utilities for processing and formatting strings or URLs
+│ ├── general_utils.py     # Miscellaneous utility functions
+│ ├── progress_utils.py    # Tools for progress tracking and reporting
+│ └── streamtape_utils.py  # Module for extracting download links from alternative host
+├── hanime_downloader.py   # Module for downloading hanime episodes
+├── main.py                # Main script to run the downloader
+└── URLs.txt               # Text file containing anime URLs
 ```
 
 ## Dependencies
