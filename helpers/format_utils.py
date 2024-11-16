@@ -27,7 +27,6 @@ def extract_hanime_name(soup):
         title_container = soup.find(
             'div', {'class': "container hentai-title-as mb-3 w-100"}
         )
-
         if title_container is None:
             raise ValueError("Hanime title container not found.")
 
@@ -52,7 +51,7 @@ def format_hanime_name(hanime_name):
     def remove_substrings_at_end(string, substrings):
         for substring in substrings:
             if string.endswith(substring):
-                return string.replace(substring, '').strip()
+                return string[:-len(substring)].strip()
         return string
 
     try:

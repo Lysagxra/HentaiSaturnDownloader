@@ -31,25 +31,25 @@ def create_progress_bar():
         TimeRemainingColumn()
     )
 
-def create_progress_table(title_text, job_progress):
+def create_progress_table(title, job_progress):
     """
     Creates a formatted progress table for tracking the download status.
 
     Parameters:
-        title_text (str): The name of the task for which the progress is being
-                          displayed.
+        title (str): The name of the task for which the progress is being
+                     displayed.
         job_progress (Progress): An instance of a progress tracking object that
                                  manages the download progress.
 
     Returns:
-        Table: A rich Table object containing the progress panel for the
+        Table: A Rich Table object containing the progress panel for the
                specified anime.
     """
     progress_table = Table.grid()
     progress_table.add_row(
         Panel.fit(
             job_progress,
-            title=f"[b]{title_text}",
+            title=f"[b]{title}",
             border_style="red",
             padding=(1, 1)
         )
