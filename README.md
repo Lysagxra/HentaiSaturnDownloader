@@ -85,7 +85,7 @@ python3 hanime_downloader.py https://www.hentaisaturn.tv/hentai/Boku-ni-Harem-Se
 
 To download episodes starting from a specific episode:
 ```bash
-python3 anime_downloader.py https://www.animeworld.so/play/made-in-abyss.pIzmnA/TNBNCF --start 2
+python3 hanime_downloader.py https://www.hentaisaturn.tv/hentai/Boku-ni-Harem-Sefure-ga-Dekita-Riyuu --start 2
 ```
 In this case, the script will download all episodes starting from the `--start` episode to the last episode.
 
