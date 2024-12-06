@@ -13,6 +13,7 @@ Usage:
 import os
 import re
 import sys
+import argparse
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -27,10 +28,6 @@ from helpers.general_utils import (
     fetch_page, create_download_directory, clear_terminal
 )
 
-SCRIPT_NAME = os.path.basename(__file__)
-DOWNLOAD_FOLDER = "Downloads"
-
-TIMEOUT = 10
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) "
@@ -39,7 +36,7 @@ HEADERS = {
     "Connection": "keep-alive"
 }
 
-def get_episode_urls(soup):
+def get_episode_urls(soup, start_episode=None, end_episode=None):
     """
     Extracts URLs based on a given tag, attribute from a BeautifulSoup object.
 
@@ -49,7 +46,7 @@ def get_episode_urls(soup):
     Returns:
         list: A list of matching URLs.
     """
-    links = soup.find_all(
+    episode_items = soup.find_all(
         'a',
         {
             'href': True,
@@ -57,7 +54,13 @@ def get_episode_urls(soup):
             'class': "btn btn-dark mb-1 bottone-ep"
         }
     )
-    return [link.get('href') for link in links]
+
+    # Determine the correct slice based on start_episode and end_episode
+    start_index = start_episode - 1 if start_episode else 0
+    end_index = end_episode if end_episode else len(episode_items)
+    return [
+        item.get('href') for item in episode_items[start_index:end_index]
+    ]
 
 def get_video_urls(episode_urls):
     """
@@ -151,7 +154,7 @@ def download_episode(
     """
     try:
         response = requests.get(
-            download_link, stream=True, headers=HEADERS, timeout=TIMEOUT
+            download_link, stream=True, headers=HEADERS, timeout=10
         )
         response.raise_for_status()
 
@@ -298,12 +301,16 @@ def download_hanime(hanime_name, video_urls, download_path):
             process_video_url, video_urls, job_progress, download_path
         )
 
-def process_hanime_download(url):
+def process_hanime_download(url, start_episode=None, end_episode=None):
     """
     Download a series of Hanime episodes from the specified URL.
 
     Args:
         url (str): The URL of the Hanime series to download.
+        start_episode (int, optional): The starting episode number. Defaults to
+                                       None.
+        end_episode (int, optional): The ending episode number. Defaults to
+                                     None.
 
     Raises:
         ValueError: If there is an issue extracting the Hanime ID or name
@@ -315,12 +322,35 @@ def process_hanime_download(url):
         hanime_name = format_hanime_name(extract_hanime_name(soup))
         download_path = create_download_directory(hanime_name)
 
-        episode_urls = get_episode_urls(soup)
+        episode_urls = get_episode_urls(
+            soup,
+            start_episode=start_episode,
+            end_episode=end_episode
+        )
         video_urls = get_video_urls(episode_urls)
         download_hanime(hanime_name, video_urls, download_path)
 
     except ValueError as val_err:
         print(f"Value error: {val_err}")
+
+def setup_parser():
+    """
+    Set up the argument parser for the anime download script.
+
+    Returns:
+        argparse.ArgumentParser: The configured argument parser instance.
+    """
+    parser = argparse.ArgumentParser(
+        description="Download anime episodes from a given URL."
+    )
+    parser.add_argument('url', help="The URL of the Anime series to download.")
+    parser.add_argument(
+        '--start', type=int, default=None, help="The starting episode number."
+    )
+    parser.add_argument(
+        '--end', type=int, default=None, help="The ending episode number."
+    )
+    return parser
 
 def main():
     """
@@ -330,13 +360,14 @@ def main():
         <hanime_url> (str): The URL of the hanime page to download
                             episodes from.
     """
-    if len(sys.argv) != 2:
-        print(f"Usage: python3 {SCRIPT_NAME} <hanime_url>")
-        sys.exit(1)
-
     clear_terminal()
-    url = sys.argv[1]
-    process_hanime_download(url)
+    parser = setup_parser()
+    args = parser.parse_args()
+    process_hanime_download(
+        args.url,
+        start_episode=args.start,
+        end_episode=args.end
+    )
 
 if __name__ == '__main__':
     main()
