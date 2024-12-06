@@ -8,6 +8,7 @@
 
 - Downloads multiple episodes concurrently.
 - Supports batch downloading via a list of URLs.
+- Supports downloading a specified range of episodes.
 - Tracks download progress with a progress bar.
 - Supports downloading from alternative hosts if necessary.
 - Automatically creates a directory structure for organized storage.
@@ -63,14 +64,30 @@ To download a single hanime, you can use the `hanime_downloader.py` script.
 Run the script followed by the hanime URL you want to download:
 
 ```bash
-python3 hanime_downloader.py <hanime_url>
+python3 anime_downloader.py <anime_url> [--start <start_episode>] [--end <end_episode>]
 ```
 
-### Example
+- `<anime_url>`: The URL of the anime series.
+- `--start <start_episode>`: The starting episode number (optional).
+- `--end <end_episode>`: The ending episode number (optional).
 
+### Examples
+
+To download all episodes:
 ```
 python3 hanime_downloader.py https://www.hentaisaturn.tv/hentai/Boku-ni-Harem-Sefure-ga-Dekita-Riyuu
 ```
+
+To download a specific range of episodes (e.g., episodes 2 to 3):
+```bash
+python3 hanime_downloader.py https://www.hentaisaturn.tv/hentai/Boku-ni-Harem-Sefure-ga-Dekita-Riyuu --start 2 --end 3
+```
+
+To download episodes starting from a specific episode:
+```bash
+python3 anime_downloader.py https://www.animeworld.so/play/made-in-abyss.pIzmnA/TNBNCF --start 2
+```
+In this case, the script will download all episodes starting from the `--start` episode to the last episode.
 
 ## Batch Download
 
