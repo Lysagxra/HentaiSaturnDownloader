@@ -7,6 +7,7 @@ clearing the terminal, making it reusable across projects.
 
 import os
 import sys
+import re
 
 import requests
 from bs4 import BeautifulSoup
@@ -43,6 +44,25 @@ def fetch_page(url, timeout=10):
         print(f"Error fetching page {url}: {req_err}")
         sys.exit(1)
 
+def sanitize_directory_name(directory_name):
+    """
+    Sanitize a given directory name by replacing invalid characters with
+    underscores. Handles the invalid characters specific to Windows, macOS,
+    and Linux.
+
+    Args:
+        directory_name (str): The original directory name to sanitize.
+
+    Returns:
+        str: The sanitized directory name.
+    """
+    invalid_chars_dict = {
+        'nt': r'[\\/:*?"<>|]',  # Windows
+        'posix': r'[/:]'        # macOS and Linux
+    }
+    invalid_chars = invalid_chars_dict.get(os.name)
+    return re.sub(invalid_chars, '_', directory_name)
+
 def create_download_directory(directory_name):
     """
     Creates a directory for downloads if it doesn't exist.
@@ -56,7 +76,10 @@ def create_download_directory(directory_name):
     Raises:
         OSError: If there is an error creating the directory.
     """
-    download_path = os.path.join(DOWNLOAD_FOLDER, directory_name)
+    download_path = os.path.join(
+        DOWNLOAD_FOLDER,
+        sanitize_directory_name(directory_name)
+    )
 
     try:
         os.makedirs(download_path, exist_ok=True)
